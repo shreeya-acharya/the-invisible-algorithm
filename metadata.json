@@ -1,0 +1,6 @@
+{
+  "name": "The Invisible Algorithm",
+  "description": "A browser extension and website to visualize recommendation system patterns and audit digital feeds.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

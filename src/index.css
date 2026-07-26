@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-surface-dim: #051424;
+  --color-primary-fixed: #dde1ff;
+  --color-surface-container-highest: #273647;
+  --color-outline: #8e90a0;
+  --color-outline-variant: #444654;
+  --color-on-error-container: #ffdad6;
+  --color-surface-variant: #273647;
+  --color-on-primary-container: #002074;
+  --color-on-secondary: #3c0091;
+  --color-on-surface-variant: #c4c5d6;
+  --color-on-primary-fixed-variant: #0038b8;
+  --color-inverse-on-surface: #233143;
+  --color-primary-fixed-dim: #b7c4ff;
+  --color-primary: #b7c4ff;
+  --color-on-background: #d4e4fa;
+  --color-tertiary-fixed-dim: #2fd9f4;
+  --color-tertiary-fixed: #a2eeff;
+  --color-surface-container-low: #0d1c2d;
+  --color-secondary-fixed: #e9ddff;
+  --color-on-secondary-fixed: #23005c;
+  --color-surface-tint: #b7c4ff;
+  --color-surface-container-lowest: #010f1f;
+  --color-on-surface: #d4e4fa;
+  --color-on-error: #690005;
+  --color-error: #ffb4ab;
+  --color-on-secondary-fixed-variant: #5516be;
+  --color-on-secondary-container: #c4abff;
+  --color-on-primary: #002584;
+  --color-background: #051424;
+  --color-on-tertiary-container: #002f36;
+  --color-on-tertiary-fixed: #001f25;
+  --color-on-tertiary: #00363e;
+  --color-surface-bright: #2c3a4c;
+  --color-surface-container: #122131;
+  --color-inverse-surface: #d4e4fa;
+  --color-error-container: #93000a;
+  --color-on-primary-fixed: #001453;
+  --color-surface: #051424;
+  --color-inverse-primary: #2e53d0;
+  --color-tertiary-container: #009fb4;
+  --color-secondary-container: #571bc1;
+  --color-on-tertiary-fixed-variant: #004e5a;
+  --color-tertiary: #2fd9f4;
+  --color-surface-container-high: #1c2b3c;
+  --color-secondary: #d0bcff;
+  --color-primary-container: #6b89ff;
+  --color-secondary-fixed-dim: #d0bcff;
+
+  --spacing-gutter: 24px;
+  --spacing-stack-sm: 8px;
+  --spacing-stack-md: 16px;
+  --spacing-stack-lg: 32px;
+  --spacing-container-padding-mobile: 20px;
+  --spacing-container-padding-desktop: 40px;
+  --spacing-unit: 4px;
+  --spacing-section-gap: 80px;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Plus Jakarta Sans", var(--font-sans);
+
+  --font-label-sm: "Inter";
+  --font-display-lg: "Plus Jakarta Sans";
+  --font-body-md: "Inter";
+  --font-body-lg: "Inter";
+  --font-headline-lg: "Plus Jakarta Sans";
+  --font-label-md: "Inter";
+  --font-headline-lg-mobile: "Plus Jakarta Sans";
+  --font-headline-md: "Plus Jakarta Sans";
+
+  --font-size-label-sm: 12px;
+  --font-size-display-lg: 48px;
+  --font-size-body-md: 16px;
+  --font-size-body-lg: 18px;
+  --font-size-headline-lg: 32px;
+  --font-size-label-md: 14px;
+  --font-size-headline-lg-mobile: 28px;
+  --font-size-headline-md: 24px;
+}
+
+/* Custom Glassmorphism Classes */
+.glass {
+  background: rgba(18, 33, 49, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.hero-gradient {
+  background: radial-gradient(circle at 75% 50%, rgba(183, 196, 255, 0.08) 0%, transparent 60%),
+              radial-gradient(circle at 25% 80%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+              #051424;
+}
+
+/* Material Symbols Outlined Custom CSS */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
