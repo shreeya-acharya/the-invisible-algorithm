@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "Invisible Algorithm — Reel Observer",
+  "version": "0.1.0",
+  "description": "Sprint 1 proof of concept: observes visible Instagram Reels captions.",
+  "content_scripts": [
+    {
+      "matches": ["https://www.instagram.com/reel/*", "https://www.instagram.com/reels/*"],
+      "js": ["dist/content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
