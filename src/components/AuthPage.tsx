@@ -1,23 +1,31 @@
+
 import { useState, FormEvent } from 'react';
 import { api } from '../services/api';
 
 interface AuthPageProps {
-  onNavigate: (page: 'landing' | 'download' | 'auth' | 'dashboard') => void;
+  onNavigate: (
+    page: 'landing' | 'download' | 'auth' | 'dashboard'
+  ) => void;
   onLoginSuccess: (user: any) => void;
 }
 
-export default function AuthPage({ onNavigate, onLoginSuccess }: AuthPageProps) {
+export default function AuthPage({
+  onNavigate,
+  onLoginSuccess,
+}: AuthPageProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
@@ -31,22 +39,32 @@ export default function AuthPage({ onNavigate, onLoginSuccess }: AuthPageProps) 
         if (!fullName) {
           throw new Error('Please provide your Full Name to sign up.');
         }
-        // Signup
+
         const user = await api.signup(email, fullName, password);
-        setSuccessMsg('Account created successfully! Connecting your dashboard...');
+
+        setSuccessMsg(
+          'Account created successfully! Connecting your dashboard...'
+        );
+
         setTimeout(() => {
           onLoginSuccess(user);
         }, 1500);
       } else {
-        // Login
         const user = await api.login(email, password);
-        setSuccessMsg('Welcome back! Loading your feed insights...');
+
+        setSuccessMsg(
+          'Welcome back! Loading your feed insights...'
+        );
+
         setTimeout(() => {
           onLoginSuccess(user);
         }, 1500);
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred during authentication.');
+      setError(
+        err.message ||
+          'An error occurred during authentication.'
+      );
     } finally {
       setLoading(false);
     }
@@ -54,9 +72,12 @@ export default function AuthPage({ onNavigate, onLoginSuccess }: AuthPageProps) 
 
   const handleForgotPassword = async () => {
     if (!email) {
-      setError('Please enter your email address first, then click forgot password.');
+      setError(
+        'Please enter your email address first, then click forgot password.'
+      );
       return;
     }
+
     setLoading(true);
     setError(null);
     setSuccessMsg(null);
@@ -65,7 +86,10 @@ export default function AuthPage({ onNavigate, onLoginSuccess }: AuthPageProps) 
       const msg = await api.forgotPassword(email);
       setSuccessMsg(msg);
     } catch (err: any) {
-      setError(err.message || 'Failed to dispatch password recovery link.');
+      setError(
+        err.message ||
+          'Failed to dispatch password recovery link.'
+      );
     } finally {
       setLoading(false);
     }
@@ -75,224 +99,771 @@ export default function AuthPage({ onNavigate, onLoginSuccess }: AuthPageProps) 
     setLoading(true);
     setError(null);
     setSuccessMsg('Logging in with Google profile...');
-    
-    // Simulate oauth integration callback (or authenticates with the mockup user)
+
     setTimeout(async () => {
       try {
-        const user = await api.login('alex@example.com', 'password123');
+        const user = await api.login(
+          'alex@example.com',
+          'password123'
+        );
+
         onLoginSuccess(user);
       } catch (err: any) {
-        setError('Google login simulation failed: ' + err.message);
+        setError(
+          'Google login simulation failed: ' +
+            err.message
+        );
         setLoading(false);
       }
     }, 1200);
   };
 
+  const switchMode = () => {
+    setIsSignUp(!isSignUp);
+    setError(null);
+    setSuccessMsg(null);
+  };
+
   return (
-    <div className="font-body-md text-body-md bg-surface-dim text-on-surface min-h-screen flex flex-col justify-between">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full z-50 bg-surface-dim/80 backdrop-blur-xl border-b border-white/5 shadow-sm h-20">
-        <div className="max-w-[1280px] mx-auto px-container-padding-desktop flex justify-between items-center h-full">
-          <div className="font-headline-md text-headline-md tracking-tighter text-on-surface cursor-pointer" onClick={() => onNavigate('landing')}>
-            The Invisible Algorithm
-          </div>
-          <div className="hidden md:flex items-center gap-stack-lg">
-            <span className="text-on-surface-variant hover:text-on-surface transition-colors font-label-md text-label-md cursor-pointer" onClick={() => onNavigate('landing')}>
-              Home
-            </span>
-            <span className="text-on-surface-variant hover:text-on-surface transition-colors font-label-md text-label-md cursor-pointer" onClick={() => onNavigate('download')}>
-              Download
-            </span>
-            <span className="text-primary font-semibold border-b-2 border-primary pb-1 font-label-md text-label-md cursor-pointer">
-              Sign In
-            </span>
-          </div>
-          <button 
-            onClick={() => onNavigate('download')}
-            className="bg-primary text-on-primary-container px-6 py-2 rounded-lg font-label-md text-label-md hover:opacity-90 active:scale-95 transition-all cursor-pointer"
+    <div className="min-h-screen bg-[#080F1D] text-white relative overflow-hidden">
+
+      {/* =====================================================
+          ANIMATIONS
+      ===================================================== */}
+
+      <style>{`
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-8px);
+          }
+        }
+
+        @keyframes pulse {
+          0%, 100% {
+            opacity: .25;
+          }
+          50% {
+            opacity: .55;
+          }
+        }
+
+        @keyframes scan {
+          0% {
+            transform: translateY(-100%);
+          }
+          100% {
+            transform: translateY(100%);
+          }
+        }
+
+        .auth-fade-up {
+          animation: fadeUp .7s ease-out both;
+        }
+
+        .auth-float {
+          animation: float 4s ease-in-out infinite;
+        }
+
+        .auth-pulse {
+          animation: pulse 4s ease-in-out infinite;
+        }
+
+        .auth-grid {
+          background-image:
+            linear-gradient(
+              rgba(255,255,255,.025) 1px,
+              transparent 1px
+            ),
+            linear-gradient(
+              90deg,
+              rgba(255,255,255,.025) 1px,
+              transparent 1px
+            );
+          background-size: 36px 36px;
+        }
+
+        .auth-input::placeholder {
+          color: rgba(255,255,255,.2);
+        }
+
+        .auth-input:focus {
+          border-color: rgba(183,196,255,.45);
+          box-shadow:
+            0 0 0 3px rgba(183,196,255,.06);
+        }
+      `}</style>
+
+
+      {/* =====================================================
+          AMBIENT BACKGROUND
+      ===================================================== */}
+
+      <div className="fixed inset-0 pointer-events-none">
+
+        <div className="auth-pulse absolute -top-48 -left-40 w-[520px] h-[520px] rounded-full bg-[#7888ff]/[0.07] blur-[130px]" />
+
+        <div className="auth-pulse absolute -bottom-48 -right-40 w-[520px] h-[520px] rounded-full bg-[#9d8cff]/[0.055] blur-[130px]" />
+
+        <div className="absolute inset-0 auth-grid opacity-30" />
+
+      </div>
+
+
+      {/* =====================================================
+          NAVBAR
+      ===================================================== */}
+
+      <nav className="relative z-20 h-[76px] border-b border-white/[0.06] bg-[#080F1D]/70 backdrop-blur-xl">
+
+        <div className="max-w-[1250px] mx-auto h-full px-5 md:px-8 flex items-center justify-between">
+
+          <button
+            onClick={() => onNavigate('landing')}
+            className="flex items-center gap-3 group"
           >
-            Download Extension
+
+            <div className="w-9 h-9 rounded-xl border border-white/[0.08] bg-white/[0.035] flex items-center justify-center group-hover:border-[#b7c4ff]/30 transition-all">
+
+              <span className="text-[#b7c4ff] text-sm">
+                ◈
+              </span>
+
+            </div>
+
+            <div className="text-left">
+
+              <div className="text-sm font-semibold tracking-tight">
+                Invisible Algorithm
+              </div>
+
+              <div className="text-[8px] uppercase tracking-[0.22em] text-white/25">
+                See beyond your feed
+              </div>
+
+            </div>
+
           </button>
+
+
+          <button
+            onClick={() => onNavigate('landing')}
+            className="text-[10px] uppercase tracking-[0.16em] text-white/35 hover:text-white transition-colors"
+          >
+            ← Back to home
+          </button>
+
         </div>
+
       </nav>
 
-      {/* Main Auth Card Area */}
-      <main className="pt-32 pb-16 px-4 flex flex-col items-center justify-center flex-grow">
-        <div className="w-full max-w-md glass rounded-2xl p-8 border border-white/10 space-y-6 shadow-2xl relative overflow-hidden">
-          {/* Accent decoration inside the card */}
-          <div className="absolute -top-10 -left-10 w-32 h-32 bg-primary/10 rounded-full blur-2xl pointer-events-none"></div>
-          
-          <div className="text-center space-y-2 relative z-10">
-            <h1 className="font-display-lg text-3xl font-bold text-white tracking-tight">
-              {isSignUp ? 'Create Your Account' : 'Welcome Back'}
-            </h1>
-            <p className="text-sm text-on-surface-variant">
-              {isSignUp 
-                ? 'Join to begin auditing recommendations and tracking digital biases.' 
-                : 'Access your personalized digital feed analysis dashboard.'}
-            </p>
-          </div>
 
-          {/* Error & Success Feedback displays */}
-          {error && (
-            <div className="bg-error/10 border border-error/20 text-error text-sm rounded-lg p-3 flex gap-2 items-center">
-              <span className="material-symbols-outlined text-base" data-icon="error">error</span>
-              <span>{error}</span>
-            </div>
-          )}
-          {successMsg && (
-            <div className="bg-primary/10 border border-primary/20 text-primary text-sm rounded-lg p-3 flex gap-2 items-center">
-              <span className="material-symbols-outlined text-base" data-icon="check_circle">check_circle</span>
-              <span>{successMsg}</span>
-            </div>
-          )}
+      {/* =====================================================
+          MAIN
+      ===================================================== */}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4 relative z-10">
-            {isSignUp && (
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-on-surface-variant block">Full Name</label>
-                <div className="relative">
-                  <span className="material-symbols-outlined absolute left-3 top-3.5 text-on-surface-variant text-lg" data-icon="person">person</span>
-                  <input
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Alex Mercer"
-                    className="w-full bg-surface-container-low border border-outline-variant/30 text-white rounded-lg pl-10 pr-4 py-3 focus:border-primary focus:outline-none transition-colors text-sm"
-                  />
-                </div>
+      <main className="relative z-10 min-h-[calc(100vh-76px)] flex items-center px-5 py-12">
+
+        <div className="w-full max-w-[1080px] mx-auto grid lg:grid-cols-[1fr_430px] gap-12 lg:gap-20 items-center">
+
+
+          {/* =================================================
+              LEFT — ALGORITHM VISUAL
+          ================================================= */}
+
+          <section className="hidden lg:block auth-fade-up">
+
+            <div className="max-w-[510px]">
+
+              <div className="flex items-center gap-2 mb-6">
+
+                <span className="w-1.5 h-1.5 rounded-full bg-[#b7c4ff] shadow-[0_0_12px_rgba(183,196,255,.7)]" />
+
+                <span className="text-[9px] font-mono uppercase tracking-[0.25em] text-[#b7c4ff]/60">
+                  {isSignUp
+                    ? 'Create your perspective'
+                    : 'Your algorithm awaits'}
+                </span>
+
               </div>
-            )}
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-on-surface-variant block">Email Address</label>
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-3.5 text-on-surface-variant text-lg" data-icon="mail">mail</span>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  className="w-full bg-surface-container-low border border-outline-variant/30 text-white rounded-lg pl-10 pr-4 py-3 focus:border-primary focus:outline-none transition-colors text-sm"
-                />
-              </div>
-            </div>
 
-            <div className="space-y-1">
-              <div className="flex justify-between items-center">
-                <label className="text-xs font-semibold text-on-surface-variant block">Password</label>
-                {!isSignUp && (
-                  <button 
-                    type="button"
-                    onClick={handleForgotPassword}
-                    className="text-xs text-primary hover:underline cursor-pointer"
-                  >
-                    Forgot password?
-                  </button>
+              <h1 className="text-5xl xl:text-6xl font-bold tracking-[-0.055em] leading-[.98]">
+
+                {isSignUp ? (
+                  <>
+                    Make the
+                    <br />
+                    <span className="text-[#b7c4ff]">
+                      invisible
+                    </span>{' '}
+                    visible.
+                  </>
+                ) : (
+                  <>
+                    See what your
+                    <br />
+                    <span className="text-[#b7c4ff]">
+                      feed
+                    </span>{' '}
+                    sees.
+                  </>
                 )}
+
+              </h1>
+
+
+              <p className="mt-6 text-sm leading-7 text-white/35 max-w-[430px]">
+
+                {isSignUp
+                  ? 'Create your account and start exploring how recommendation systems shape your digital world.'
+                  : 'Sign in to uncover patterns, measure your feed diversity, and understand your information bubble.'}
+
+              </p>
+
+
+              {/* =============================================
+                  FEED VISUAL
+              ============================================= */}
+
+              <div className="relative mt-10 w-full h-[230px] rounded-2xl border border-white/[0.07] bg-white/[0.018] overflow-hidden">
+
+                <div className="absolute inset-0 auth-grid opacity-40" />
+
+
+                {/* Header */}
+                <div className="absolute top-0 left-0 right-0 h-12 border-b border-white/[0.06] px-5 flex items-center justify-between">
+
+                  <div className="flex items-center gap-2">
+
+                    <span className="w-5 h-5 rounded-md bg-[#b7c4ff]/10 border border-[#b7c4ff]/15 flex items-center justify-center text-[8px] text-[#b7c4ff]">
+                      ◈
+                    </span>
+
+                    <span className="text-[9px] text-white/40">
+                      YOUR RECOMMENDATIONS
+                    </span>
+
+                  </div>
+
+                  <span className="text-[8px] font-mono text-white/20">
+                    LIVE ANALYSIS
+                  </span>
+
+                </div>
+
+
+                {/* Feed cards */}
+                <div className="absolute top-[68px] left-5 right-5 flex gap-3">
+
+                  <FeedCard
+                    title="Technology"
+                    value="62%"
+                    width="62%"
+                    delay="0s"
+                  />
+
+                  <FeedCard
+                    title="Entertainment"
+                    value="24%"
+                    width="24%"
+                    delay=".6s"
+                  />
+
+                  <FeedCard
+                    title="Other"
+                    value="14%"
+                    width="14%"
+                    delay="1.2s"
+                  />
+
+                </div>
+
+
+                {/* Bubble meter */}
+                <div className="absolute bottom-5 left-5 right-5">
+
+                  <div className="flex justify-between items-center mb-2">
+
+                    <span className="text-[8px] uppercase tracking-[0.16em] text-white/25">
+                      Information bubble
+                    </span>
+
+                    <span className="text-[9px] font-mono text-[#b7c4ff]/70">
+                      68 / 100
+                    </span>
+
+                  </div>
+
+                  <div className="h-1 rounded-full bg-white/[0.05] overflow-hidden">
+
+                    <div className="h-full w-[68%] rounded-full bg-gradient-to-r from-[#b7c4ff]/40 to-[#b7c4ff]" />
+
+                  </div>
+
+                </div>
+
               </div>
-              <div className="relative">
-                <span className="material-symbols-outlined absolute left-3 top-3.5 text-on-surface-variant text-lg" data-icon="lock">lock</span>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full bg-surface-container-low border border-outline-variant/30 text-white rounded-lg pl-10 pr-4 py-3 focus:border-primary focus:outline-none transition-colors text-sm"
-                />
+
+
+              {/* Small features */}
+              <div className="flex gap-6 mt-7">
+
+                <MiniFeature text="Feed insights" />
+
+                <MiniFeature text="Privacy first" />
+
+                <MiniFeature text="No blocking" />
+
               </div>
+
             </div>
 
-            {!isSignUp && (
-              <div className="flex items-center gap-2 pt-1">
-                <input 
-                  type="checkbox" 
-                  id="keep-logged-in" 
-                  defaultChecked
-                  className="rounded bg-surface-container-low border-outline-variant/30 text-primary focus:ring-primary h-4 w-4"
-                />
-                <label htmlFor="keep-logged-in" className="text-xs text-on-surface-variant cursor-pointer select-none">
-                  Keep me logged in
-                </label>
+          </section>
+
+
+          {/* =================================================
+              RIGHT — AUTH
+          ================================================= */}
+
+          <section className="auth-fade-up">
+
+            <div className="relative rounded-[26px] border border-white/[0.08] bg-[#0c1727]/90 backdrop-blur-2xl p-7 sm:p-8 shadow-[0_35px_100px_rgba(0,0,0,.4)] overflow-hidden">
+
+              {/* subtle glow */}
+              <div className="absolute -top-32 -right-32 w-72 h-72 rounded-full bg-[#b7c4ff]/[0.05] blur-[90px]" />
+
+              <div className="relative z-10">
+
+                {/* Mobile logo */}
+                <div className="lg:hidden flex justify-center mb-7">
+
+                  <div className="w-12 h-12 rounded-2xl border border-[#b7c4ff]/15 bg-[#b7c4ff]/10 flex items-center justify-center">
+
+                    <span className="text-[#b7c4ff]">
+                      ◈
+                    </span>
+
+                  </div>
+
+                </div>
+
+
+                {/* Heading */}
+                <div className="mb-7">
+
+                  <div className="text-[9px] uppercase tracking-[0.2em] font-mono text-[#b7c4ff]/55 mb-3">
+                    {isSignUp
+                      ? 'New perspective'
+                      : 'Account access'}
+                  </div>
+
+                  <h2 className="text-2xl font-bold tracking-[-0.04em]">
+                    {isSignUp
+                      ? 'Create your account'
+                      : 'Welcome back'}
+                  </h2>
+
+                  <p className="text-xs text-white/30 mt-2 leading-relaxed">
+                    {isSignUp
+                      ? 'Start understanding your algorithm.'
+                      : 'Continue exploring your information bubble.'}
+                  </p>
+
+                </div>
+
+
+                {/* Messages */}
+                {error && (
+                  <div className="mb-5 rounded-xl border border-red-400/10 bg-red-400/[0.05] px-4 py-3">
+
+                    <div className="flex gap-2">
+
+                      <span className="text-red-300 text-xs">
+                        !
+                      </span>
+
+                      <p className="text-[10px] leading-relaxed text-red-300">
+                        {error}
+                      </p>
+
+                    </div>
+
+                  </div>
+                )}
+
+
+                {successMsg && (
+                  <div className="mb-5 rounded-xl border border-emerald-400/10 bg-emerald-400/[0.05] px-4 py-3">
+
+                    <div className="flex gap-2">
+
+                      <span className="text-emerald-300 text-xs">
+                        ✓
+                      </span>
+
+                      <p className="text-[10px] leading-relaxed text-emerald-300">
+                        {successMsg}
+                      </p>
+
+                    </div>
+
+                  </div>
+                )}
+
+
+                {/* Form */}
+                <form
+                  onSubmit={handleSubmit}
+                  className="space-y-4"
+                >
+
+                  {isSignUp && (
+                    <AuthInput
+                      label="Full name"
+                      type="text"
+                      value={fullName}
+                      onChange={setFullName}
+                      placeholder="Your name"
+                    />
+                  )}
+
+
+                  <AuthInput
+                    label="Email address"
+                    type="email"
+                    value={email}
+                    onChange={setEmail}
+                    placeholder="you@example.com"
+                  />
+
+
+                  <div>
+
+                    <div className="flex justify-between items-center mb-2">
+
+                      <label className="text-[9px] uppercase tracking-[0.14em] font-semibold text-white/40">
+                        Password
+                      </label>
+
+                      {!isSignUp && (
+                        <button
+                          type="button"
+                          onClick={handleForgotPassword}
+                          className="text-[9px] text-[#b7c4ff]/65 hover:text-[#b7c4ff] transition-colors"
+                        >
+                          Forgot password?
+                        </button>
+                      )}
+
+                    </div>
+
+                    <input
+                      type="password"
+                      required
+                      value={password}
+                      onChange={(e) =>
+                        setPassword(e.target.value)
+                      }
+                      placeholder="Enter your password"
+                      className="auth-input w-full h-12 rounded-xl border border-white/[0.08] bg-white/[0.025] px-4 text-xs text-white outline-none transition-all"
+                    />
+
+                  </div>
+
+
+                  {!isSignUp && (
+                    <label className="flex items-center gap-2 cursor-pointer pt-1">
+
+                      <input
+                        type="checkbox"
+                        id="keep-logged-in"
+                        defaultChecked
+                        className="w-3.5 h-3.5 rounded border-white/10 bg-white/[0.03]"
+                      />
+
+                      <span className="text-[9px] text-white/25">
+                        Keep me logged in
+                      </span>
+
+                    </label>
+                  )}
+
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full h-12 rounded-xl bg-[#b7c4ff] text-[#07101c] font-bold text-xs hover:brightness-110 active:scale-[.99] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+
+                    {loading ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-[#07101c]/25 border-t-[#07101c] rounded-full animate-spin" />
+                        {isSignUp
+                          ? 'Creating account...'
+                          : 'Signing in...'}
+                      </>
+                    ) : (
+                      <>
+                        {isSignUp
+                          ? 'Create account'
+                          : 'Sign in'}
+
+                        <span>
+                          →
+                        </span>
+                      </>
+                    )}
+
+                  </button>
+
+                </form>
+
+
+                {/* Divider */}
+                <div className="flex items-center gap-3 my-6">
+
+                  <div className="h-px flex-1 bg-white/[0.06]" />
+
+                  <span className="text-[8px] uppercase tracking-[0.2em] text-white/20">
+                    or
+                  </span>
+
+                  <div className="h-px flex-1 bg-white/[0.06]" />
+
+                </div>
+
+
+                {/* Google */}
+                <button
+                  type="button"
+                  onClick={handleGoogleLogin}
+                  disabled={loading}
+                  className="w-full h-11 rounded-xl border border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.045] transition-all flex items-center justify-center gap-3 text-[11px] text-white/60 disabled:opacity-50"
+                >
+
+                  <svg
+                    className="w-4 h-4"
+                    viewBox="0 0 24 24"
+                  >
+
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.04c1.62 0 3.08.56 4.22 1.64l3.15-3.15C17.45 1.74 14.93 1 12 1 7.37 1 3.4 3.63 1.39 7.47l3.74 2.9C6.01 7.15 8.78 5.04 12 5.04z"
+                    />
+
+                    <path
+                      fill="#4285F4"
+                      d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.45h6.45c-.28 1.48-1.11 2.73-2.37 3.58l3.69 2.87c2.16-1.99 3.72-4.92 3.72-8.56z"
+                    />
+
+                    <path
+                      fill="#FBBC05"
+                      d="M5.13 14.53c-.24-.72-.38-1.49-.38-2.28s.14-1.56.38-2.28L1.39 7.07C.5 8.87 0 10.87 0 13s.5 4.13 1.39 5.93l3.74-2.93z"
+                    />
+
+                    <path
+                      fill="#34A853"
+                      d="M12 23c3.24 0 5.96-1.08 7.95-2.91l-3.69-2.87c-1.11.75-2.52 1.19-4.26 1.19-3.22 0-5.99-2.11-6.96-4.96l-3.74 2.9C3.4 20.37 7.37 23 12 23z"
+                    />
+
+                  </svg>
+
+                  Continue with Google
+
+                </button>
+
+
+                {/* Toggle */}
+                <div className="text-center mt-6">
+
+                  <span className="text-[10px] text-white/25">
+                    {isSignUp
+                      ? 'Already have an account?'
+                      : 'New to Invisible Algorithm?'}
+                  </span>
+
+                  {' '}
+
+                  <button
+                    type="button"
+                    onClick={switchMode}
+                    className="text-[10px] font-semibold text-[#b7c4ff] hover:text-white transition-colors"
+                  >
+                    {isSignUp
+                      ? 'Sign in'
+                      : 'Create account'}
+                  </button>
+
+                </div>
+
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-primary text-on-primary-container py-3.5 rounded-lg font-bold hover:brightness-110 active:scale-95 transition-all text-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:scale-100"
-            >
-              {loading ? (
-                <span>Loading...</span>
-              ) : (
-                <>
-                  <span>{isSignUp ? 'Create Account' : 'Log In'}</span>
-                  <span className="material-symbols-outlined text-sm" data-icon="arrow_forward">arrow_forward</span>
-                </>
-              )}
-            </button>
-          </form>
+            </div>
 
-          {/* Social Divider */}
-          <div className="flex items-center gap-2 text-xs text-on-surface-variant opacity-55 relative z-10">
-            <div className="flex-grow h-[1px] bg-outline-variant/20"></div>
-            <span>or</span>
-            <div className="flex-grow h-[1px] bg-outline-variant/20"></div>
-          </div>
+          </section>
 
-          {/* Google Login */}
-          <button
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full border border-outline-variant/30 py-3 rounded-lg flex items-center justify-center gap-2 text-sm text-white hover:bg-white/5 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-          >
-            {/* Simple Inline Google G Logo SVG */}
-            <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-              <path fill="#EA4335" d="M12 5.04c1.62 0 3.08.56 4.22 1.64l3.15-3.15C17.45 1.74 14.93 1 12 1 7.37 1 3.4 3.63 1.39 7.47l3.74 2.9C6.01 7.15 8.78 5.04 12 5.04z" />
-              <path fill="#4285F4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.45h6.45c-.28 1.48-1.11 2.73-2.37 3.58l3.69 2.87c2.16-1.99 3.72-4.92 3.72-8.56z" />
-              <path fill="#FBBC05" d="M5.13 14.53c-.24-.72-.38-1.49-.38-2.28s.14-1.56.38-2.28L1.39 7.07C.5 8.87 0 10.87 0 13s.5 4.13 1.39 5.93l3.74-2.93z" />
-              <path fill="#34A853" d="M12 23c3.24 0 5.96-1.08 7.95-2.91l-3.69-2.87c-1.11.75-2.52 1.19-4.26 1.19-3.22 0-5.99-2.11-6.96-4.96l-3.74 2.9C3.4 20.37 7.37 23 12 23z" />
-            </svg>
-            <span>Continue with Google</span>
-          </button>
-
-          {/* Toggle link */}
-          <div className="text-center text-xs text-on-surface-variant relative z-10 pt-2">
-            <span>{isSignUp ? 'Already have an account?' : 'New to The Invisible Algorithm?'}</span>{' '}
-            <button
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError(null);
-                setSuccessMsg(null);
-              }}
-              className="text-primary hover:underline font-bold cursor-pointer"
-            >
-              {isSignUp ? 'Sign In' : 'Create Account'}
-            </button>
-          </div>
         </div>
+
       </main>
 
-      {/* Footer */}
-      <footer className="bg-surface-container-lowest py-6 border-t border-outline-variant/20">
-        <div className="max-w-[1280px] mx-auto px-container-padding-desktop flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="space-y-1 text-center md:text-left">
-            <div className="font-semibold text-white text-sm">The Invisible Algorithm</div>
-            <p className="text-xs text-on-surface-variant">© 2024 The Invisible Algorithm. All rights reserved.</p>
-          </div>
-          <div className="flex gap-4 text-xs text-on-surface-variant">
-            <span className="hover:text-primary transition-colors cursor-pointer">Privacy Policy</span>
+
+      {/* =====================================================
+          FOOTER
+      ===================================================== */}
+
+      <footer className="relative z-10 border-t border-white/[0.05]">
+
+        <div className="max-w-[1250px] mx-auto px-5 md:px-8 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+
+          <span className="text-[9px] text-white/20">
+            © 2026 Invisible Algorithm
+          </span>
+
+          <div className="flex items-center gap-4 text-[9px] text-white/20">
+
+            <button className="hover:text-white/50 transition-colors">
+              Privacy
+            </button>
+
             <span>•</span>
-            <span className="hover:text-primary transition-colors cursor-pointer">Terms of Service</span>
-            <span>•</span>
-            <span className="hover:text-primary transition-colors cursor-pointer" onClick={() => onNavigate('landing')}>Back to Home</span>
+
+            <button className="hover:text-white/50 transition-colors">
+              Terms
+            </button>
+
           </div>
+
         </div>
+
       </footer>
+
     </div>
   );
 }
+
+
+/* =============================================================
+   AUTH INPUT
+============================================================= */
+
+function AuthInput({
+  label,
+  type,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  type: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  return (
+    <div>
+
+      <label className="block mb-2 text-[9px] uppercase tracking-[0.14em] font-semibold text-white/40">
+        {label}
+      </label>
+
+      <input
+        type={type}
+        required
+        value={value}
+        onChange={(e) =>
+          onChange(e.target.value)
+        }
+        placeholder={placeholder}
+        className="auth-input w-full h-12 rounded-xl border border-white/[0.08] bg-white/[0.025] px-4 text-xs text-white outline-none transition-all"
+      />
+
+    </div>
+  );
+}
+
+
+/* =============================================================
+   FEED CARD
+============================================================= */
+
+function FeedCard({
+  title,
+  value,
+  width,
+  delay,
+}: {
+  title: string;
+  value: string;
+  width: string;
+  delay: string;
+}) {
+  return (
+    <div
+      className="auth-float flex-1"
+      style={{ animationDelay: delay }}
+    >
+
+      <div className="flex items-center justify-between mb-2">
+
+        <span className="text-[8px] text-white/30">
+          {title}
+        </span>
+
+        <span className="text-[8px] font-mono text-[#b7c4ff]/60">
+          {value}
+        </span>
+
+      </div>
+
+      <div className="h-8 rounded-lg bg-white/[0.025] border border-white/[0.05] p-1">
+
+        <div
+          className="h-full rounded-md bg-[#b7c4ff]/15 border border-[#b7c4ff]/10"
+          style={{ width }}
+        />
+
+      </div>
+
+    </div>
+  );
+}
+
+
+/* =============================================================
+   MINI FEATURE
+============================================================= */
+
+function MiniFeature({
+  text,
+}: {
+  text: string;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+
+      <span className="w-4 h-4 rounded-full bg-[#b7c4ff]/10 border border-[#b7c4ff]/15 flex items-center justify-center text-[7px] text-[#b7c4ff]">
+        ✓
+      </span>
+
+      <span className="text-[9px] text-white/25">
+        {text}
+      </span>
+
+    </div>
+  );
+}
+
