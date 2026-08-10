@@ -7,10 +7,32 @@ type ReelData = {
   reelUrl: string;
 };
 
+type UsernameCandidate = {
+  username: string;
+  href: string;
+};
+
+type CaptionCandidate = {
+  text: string;
+  element: HTMLElement;
+};
+
+type ProvenCaption = {
+  preview: string;
+  boundary: HTMLElement;
+  container: HTMLElement;
+};
+
 let lastPageUrl = location.href;
 let lastReelIdentity = '';
 let scanTimer: number | undefined;
-let initialScanPending = true;
+let pendingRetries = 0;
+
+/** Rescans allowed after pressing "more", covering ~1.2s of re-render lag. */
+const EXPAND_RETRIES = 8;
+
+let expandedIdentity = '';
+let expandRetries = 0;
 
 function cleanText(element: Element): string {
   return (element instanceof HTMLElement ? element.innerText : element.textContent || '')
@@ -28,41 +50,54 @@ function visibleArea(element: Element): number {
   return width * height;
 }
 
-/** Select the largest viewport-visible media container; never assume the first node is active. */
+/**
+ * The reel item is the innermost ancestor of the video that owns a creator link.
+ * Walking up from the video (rather than down from main) avoids selecting the
+ * feed's scroll container, which also contains a video and never changes.
+ */
+function reelItemFor(video: HTMLElement, main: HTMLElement): HTMLElement {
+  let fallback: HTMLElement = video;
+
+  for (let current = video.parentElement; current && current !== main; current = current.parentElement) {
+    if (getUsernameCandidates(current).length > 0) return current;
+    if (current.getBoundingClientRect().height <= innerHeight * 1.25) fallback = current;
+  }
+  return fallback;
+}
+
+/** Select the reel whose video occupies the most of the viewport. */
 function getCurrentReel(): HTMLElement | null {
   const main = document.querySelector('main');
   if (!main) return null;
 
-  const candidates = Array.from(main.querySelectorAll<HTMLElement>('div'))
-    .map((element) => ({ element, area: visibleArea(element) }))
-    .filter(({ element, area }) =>
-      area > 0 &&
-      Boolean(element.querySelector('video, img')) &&
-      Boolean(cleanText(element))
-    )
-    .sort((a, b) => b.area - a.area);
+  const active = Array.from(main.querySelectorAll<HTMLVideoElement>('video'))
+    .map((video) => ({ video, area: visibleArea(video) }))
+    .filter(({ area }) => area > 0)
+    .sort((a, b) => b.area - a.area)[0];
 
-  return candidates[0]?.element || null;
+  return active ? reelItemFor(active.video, main) : null;
+}
+
+/**
+ * The script is injected across Instagram so it survives SPA navigation into
+ * Reels; this gates the actual work to Reel routes.
+ */
+function isReelPage(): boolean {
+  return /^\/reels?\//.test(location.pathname);
+}
+
+/** `/reels/audio/123` and `/reels/videos/…` are not reel permalinks. */
+function isReelPermalink(pathname: string): boolean {
+  return /^\/reels?\/[^/]+\/?$/.test(pathname) && !/^\/reels?\/(?:audio|music|videos)\//.test(pathname);
 }
 
 function getReelUrl(reel: HTMLElement): string {
-  if (/^\/reel\//.test(location.pathname)) return location.href;
+  if (isReelPermalink(location.pathname)) return location.href;
 
   const reelLink = Array.from(reel.querySelectorAll<HTMLAnchorElement>('a[href]'))
-    .find((link) => /^\/reels?\//.test(new URL(link.href, location.origin).pathname));
+    .find((link) => isReelPermalink(new URL(link.href, location.origin).pathname));
   return reelLink ? reelLink.href : location.href;
 }
-
-type UsernameCandidate = {
-  username: string;
-  href: string;
-  ariaLabel: string;
-};
-
-type CaptionCandidate = {
-  text: string;
-  parent: string;
-};
 
 function getUsernameCandidates(reel: HTMLElement): UsernameCandidate[] {
   const seen = new Set<string>();
@@ -77,15 +112,10 @@ function getUsernameCandidates(reel: HTMLElement): UsernameCandidate[] {
       const label = link.getAttribute('aria-label') || '';
       return {
         username: cleanText(link) || label.replace(/ reels$/i, ''),
-        href: link.href,
-        ariaLabel: label
+        href: link.href
       };
     })
     .filter((candidate) => candidate.username && !seen.has(candidate.href) && Boolean(seen.add(candidate.href)));
-}
-
-function getUsername(_reel: HTMLElement, candidates: UsernameCandidate[]): string | null {
-  return candidates[0]?.username || null;
 }
 
 function audioTexts(reel: HTMLElement): Set<string> {
@@ -108,8 +138,18 @@ function isVisibleTextParent(element: HTMLElement, reel: HTMLElement): boolean {
   return rect.width > 0 && rect.height > 0;
 }
 
+/** Hashtags and mentions are anchors inside the caption, not surrounding UI. */
+function isCaptionLinkText(element: HTMLElement, text: string): boolean {
+  const link = element.closest<HTMLAnchorElement>('a[href]');
+  if (!link) return false;
+
+  const path = new URL(link.href, location.origin).pathname;
+  return /^\/explore\/tags\//.test(path) || /^[#@]/.test(text);
+}
+
 function isUiOrMetadataText(element: HTMLElement, text: string, audio: Set<string>): boolean {
-  if (element.closest('a') || element.closest('time')) return true;
+  if (element.closest('time')) return true;
+  if (element.closest('a') && !isCaptionLinkText(element, text)) return true;
   if (audio.has(text)) return true;
 
   const normalized = text.toLowerCase();
@@ -125,7 +165,6 @@ function isUiOrMetadataText(element: HTMLElement, text: string, audio: Set<strin
   return /^(?:like|comment|repost|share|save|more)$/i.test(controlLabel);
 }
 
-/** Inspect text nodes only inside the selected Reel for concise, scoped diagnostics. */
 function getCaptionCandidates(reel: HTMLElement): CaptionCandidate[] {
   const audio = audioTexts(reel);
   const candidates = new Map<string, CaptionCandidate>();
@@ -136,42 +175,66 @@ function getCaptionCandidates(reel: HTMLElement): CaptionCandidate[] {
     const text = node.textContent?.replace(/\s+/g, ' ').trim() || '';
     if (!parent || !text || !isVisibleTextParent(parent, reel) || isUiOrMetadataText(parent, text, audio)) continue;
 
-    candidates.set(text, {
-      text,
-      parent: `${parent.tagName.toLowerCase()}${parent.getAttribute('role') ? `[role="${parent.getAttribute('role')}"]` : ''}`
-    });
+    candidates.set(text, { text, element: parent });
   }
 
   return [...candidates.values()];
 }
 
-type ProvenCaption = {
-  preview: string;
-  boundary: HTMLElement;
-};
-
-function creatorElementFor(reel: HTMLElement, username: string): HTMLAnchorElement | null {
-  return Array.from(reel.querySelectorAll<HTMLAnchorElement>('a[href]'))
-    .find((link) => cleanText(link) === username) || null;
+function nearestCreatorCaptionAncestor(
+  creator: HTMLElement,
+  captionText: string,
+  reel: HTMLElement
+): HTMLElement | null {
+  for (let current: HTMLElement | null = creator; current; current = current.parentElement) {
+    if (current.textContent?.replace(/\s+/g, ' ').includes(captionText)) return current;
+    if (current === reel) break;
+  }
+  return null;
 }
 
-function findProvenCaption(reel: HTMLElement, username: string | null, candidates: CaptionCandidate[]): ProvenCaption | null {
-  if (!username) return null;
+/**
+ * The caption spans the prose text node plus its sibling hashtag/mention anchors.
+ * The largest ancestor that still excludes the creator link is that shared parent.
+ */
+function captionContainerFor(previewParent: HTMLElement, creator: HTMLElement, boundary: HTMLElement): HTMLElement {
+  let container = previewParent;
 
-  const creator = creatorElementFor(reel, username);
+  for (let current = previewParent.parentElement; current && current !== boundary; current = current.parentElement) {
+    if (current.contains(creator)) break;
+    container = current;
+  }
+  return container;
+}
+
+function findProvenCaption(
+  reel: HTMLElement,
+  creatorCandidate: UsernameCandidate | undefined,
+  candidates: CaptionCandidate[]
+): ProvenCaption | null {
+  if (!creatorCandidate) return null;
+
+  const creator = Array.from(reel.querySelectorAll<HTMLAnchorElement>('a[href]'))
+    .find((link) => link.href === creatorCandidate.href);
   if (!creator) return null;
 
   const proven = candidates.flatMap((candidate) => {
-    const captionElement = findTextElement(reel, candidate.text);
-    const boundary = captionElement ? nearestCreatorCaptionAncestor(creator, candidate.text, reel) : null;
+    const boundary = nearestCreatorCaptionAncestor(creator, candidate.text, reel);
     if (!boundary) return [];
 
     const containsOtherCreator = getUsernameCandidates(boundary)
-      .some((other) => other.username !== username);
-    return containsOtherCreator ? [] : [{ preview: candidate.text, boundary }];
+      .some((other) => other.username !== creatorCandidate.username);
+    if (containsOtherCreator) return [];
+
+    return [{
+      preview: candidate.text,
+      boundary,
+      container: captionContainerFor(candidate.element, creator, boundary)
+    }];
   });
 
-  return proven.length === 1 ? proven[0] : null;
+  // A caption can span several text nodes; the longest proven run is the caption.
+  return proven.sort((a, b) => b.preview.length - a.preview.length)[0] || null;
 }
 
 function fullCaptionText(boundary: HTMLElement, preview: string): string | null {
@@ -189,287 +252,178 @@ function fullCaptionText(boundary: HTMLElement, preview: string): string | null 
   return matches.size === 1 ? [...matches][0] : null;
 }
 
-function captionExpander(boundary: HTMLElement): HTMLElement | null {
-  return Array.from(boundary.querySelectorAll<HTMLElement>('button, a, [role="button"]'))
-    .find((element) => /^(?:\.\.\.|…)?\s*more$|^see more$/i.test(cleanText(element))) || null;
-}
-
-function getCaption(reel: HTMLElement, username: string | null, candidates: CaptionCandidate[]): string | null {
-  const proven = findProvenCaption(reel, username, candidates);
-  if (!proven) return null;
-
-  const fullText = fullCaptionText(proven.boundary, proven.preview);
-  if (fullText) return fullText;
-
-  const expander = captionExpander(proven.boundary);
-  if (expander) {
-    console.info('[Invisible Algorithm] Caption boundary contains only the preview; full text requires this expander:', expander);
-  }
-  return proven.preview;
-}
-
-function findTextElement(reel: HTMLElement, targetText: string): HTMLElement | null {
-  const walker = document.createTreeWalker(reel, NodeFilter.SHOW_TEXT);
+/** Join every non-UI text node in the caption container, in document order. */
+function assembleCaption(container: HTMLElement): string {
+  const audio = audioTexts(container);
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
 
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const text = node.textContent?.replace(/\s+/g, ' ').trim();
-    if (text === targetText && node.parentElement) return node.parentElement;
+    const parent = node.parentElement;
+    const text = node.textContent?.replace(/\s+/g, ' ').trim() || '';
+    if (!parent || !text || seen.has(text) || isUiOrMetadataText(parent, text, audio)) continue;
+
+    seen.add(text);
+    parts.push(text);
   }
-  return null;
+
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
 }
 
-function elementDescription(element: HTMLElement | null): Record<string, string> | null {
-  if (!element) return null;
-  return {
-    tagName: element.tagName,
-    className: element.getAttribute('class') || '(none)',
-    role: element.getAttribute('role') || '(none)',
-    text: cleanText(element).slice(0, 160)
-  };
+/** Matches "more", "... more", "…more", "see more". */
+const EXPANDER_TEXT = /^(?:\.{3}|…)?\s*(?:see\s+)?more$/i;
+
+/** Matches "less", "... less", "show less". */
+const COLLAPSER_TEXT = /^(?:\.{3}|…)?\s*(?:show\s+)?less$/i;
+
+/**
+ * Instagram renders this control as a bare span with the handler on an ancestor,
+ * so any element can be the target; click() bubbles up to whoever is listening.
+ * Anchors with a real href are skipped so expanding can never navigate the page.
+ */
+function findControl(scope: HTMLElement, pattern: RegExp): HTMLElement | null {
+  const matches = Array.from(scope.querySelectorAll<HTMLElement>('*'))
+    .filter((element) => element.tagName !== 'A' || !element.getAttribute('href'))
+    .filter((element) => pattern.test(cleanText(element)));
+
+  // The deepest match is the control itself rather than a wrapper around it.
+  return matches.find((element) => !matches.some((other) => other !== element && element.contains(other))) || null;
 }
 
-function parentChain(element: HTMLElement, reel: HTMLElement): Record<string, string>[] {
-  const chain: Record<string, string>[] = [];
+function captionExpander(scope: HTMLElement): HTMLElement | null {
+  return findControl(scope, EXPANDER_TEXT);
+}
 
-  for (let current: HTMLElement | null = element; current && chain.length < 8; current = current.parentElement) {
-    const description = elementDescription(current);
-    if (description) chain.push(description);
-    if (current === reel) break;
+/** element.click() only fires a click event; React handlers often watch pointerdown/mousedown. */
+function simulateClick(target: Element, x: number, y: number): void {
+  const base = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+  const pointer = { ...base, pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+
+  target.dispatchEvent(new PointerEvent('pointerdown', pointer));
+  target.dispatchEvent(new MouseEvent('mousedown', base));
+  target.dispatchEvent(new PointerEvent('pointerup', pointer));
+  target.dispatchEvent(new MouseEvent('mouseup', base));
+  target.dispatchEvent(new MouseEvent('click', base));
+}
+
+/** Put the caption back the way it was, so scrolling past does not leave it open. */
+function collapseCaption(reel: HTMLElement): void {
+  const collapser = findControl(reel, COLLAPSER_TEXT);
+  if (collapser) {
+    collapser.click();
+    return;
   }
-  return chain;
-}
 
-function nearestCreatorCaptionAncestor(
-  creator: HTMLElement,
-  captionText: string,
-  reel: HTMLElement
-): HTMLElement | null {
-  for (let current: HTMLElement | null = creator; current; current = current.parentElement) {
-    if (current.textContent?.replace(/\s+/g, ' ').includes(captionText)) return current;
-    if (current === reel) break;
-  }
-  return null;
-}
-
-function textSnapshot(element: HTMLElement): Record<string, string> {
-  return {
-    tagName: element.tagName,
-    role: element.getAttribute('role') || '(none)',
-    textContent: element.textContent || '',
-    innerText: element.innerText || ''
-  };
-}
-
-function visibilitySnapshot(element: HTMLElement): Record<string, string | boolean> {
-  const style = getComputedStyle(element);
-  const rect = element.getBoundingClientRect();
-  return {
-    hiddenAttribute: element.hidden,
-    ariaHidden: element.getAttribute('aria-hidden') || '(none)',
-    display: style.display,
-    visibility: style.visibility,
-    opacity: style.opacity,
-    hasLayout: rect.width > 0 && rect.height > 0
-  };
-}
-
-function commonAncestor(first: HTMLElement, second: HTMLElement, boundary: HTMLElement): HTMLElement | null {
-  const ancestors = new Set<HTMLElement>();
-  for (let current: HTMLElement | null = first; current; current = current.parentElement) {
-    ancestors.add(current);
-    if (current === boundary) break;
-  }
-  for (let current: HTMLElement | null = second; current; current = current.parentElement) {
-    if (ancestors.has(current)) return current;
-    if (current === boundary) break;
-  }
-  return null;
-}
-
-function inspectCreatorCaptionBoundary(boundary: HTMLElement, captionText: string): void {
-  const descendants = Array.from(boundary.querySelectorAll<HTMLElement>('*'));
-  const captionElements = descendants.filter((element) => element.textContent?.replace(/\s+/g, ' ').includes(captionText));
-  const hiddenTextElements = descendants.filter((element) => {
-    const text = element.textContent?.replace(/\s+/g, ' ').trim() || '';
-    const visibility = visibilitySnapshot(element);
-    return text && (visibility.hiddenAttribute || visibility.ariaHidden === 'true' || visibility.display === 'none' ||
-      visibility.visibility !== 'visible' || !visibility.hasLayout);
-  });
-  const possibleExpandedText = hiddenTextElements.filter((element) =>
-    (element.textContent?.replace(/\s+/g, ' ').trim().length || 0) > captionText.length
-  );
-  const controls = Array.from(boundary.querySelectorAll<HTMLElement>('button, a, [role="button"]'))
-    .map((element) => ({
-      tagName: element.tagName,
-      role: element.getAttribute('role') || '(none)',
-      ariaLabel: element.getAttribute('aria-label') || '(none)',
-      href: element.getAttribute('href') || '(none)',
-      text: cleanText(element),
-      isMoreLike: /^(?:\.\.\.|…)?\s*more$|^see more$/i.test(cleanText(element)),
-      parent: elementDescription(element.parentElement)
-    }));
-
-  console.groupCollapsed('[Invisible Algorithm] Proven creator-caption boundary inspection');
-  console.log('Direct children:', Array.from(boundary.children).map((child) => ({
-    ...elementDescription(child as HTMLElement),
-    textContent: child.textContent || '',
-    innerText: child instanceof HTMLElement ? child.innerText : ''
-  })));
-  console.log('Descendants containing Summer in Japan. 🇯🇵:', captionElements.map((element) => ({
-    ...textSnapshot(element),
-    visibility: visibilitySnapshot(element),
-    parent: elementDescription(element.parentElement),
-    ancestorChain: parentChain(element, boundary)
-  })));
-  console.log('Hidden/collapsed text descendants:', hiddenTextElements.map((element) => ({
-    ...textSnapshot(element),
-    visibility: visibilitySnapshot(element),
-    parent: elementDescription(element.parentElement)
-  })));
-  console.log('Long hidden/collapsed text is present:', possibleExpandedText.length > 0);
-  console.log('Potential long expanded-caption elements:', possibleExpandedText.map((element) => ({
-    ...textSnapshot(element),
-    parent: elementDescription(element.parentElement),
-    nearestCaptionAncestor: captionElements[0] ? elementDescription(commonAncestor(captionElements[0], element, boundary)) : null
-  })));
-  console.log('Caption expansion buttons/links:', controls);
-  console.groupEnd();
-}
-
-function debugCreatorCaptionBoundary(reel: HTMLElement): void {
-  const creatorText = 'fourleaf.428';
-  const captionText = 'Summer in Japan. 🇯🇵';
-  const otherCreatorText = 'nomads.onchain';
-  const otherCaptionText = 'This game had one rule... and somehow I qualified. 🤣';
-  const creator = Array.from(reel.querySelectorAll<HTMLAnchorElement>('a[href]'))
-    .find((link) => cleanText(link) === creatorText) || null;
-  const captionElement = findTextElement(reel, captionText);
-
-  console.groupCollapsed('[Invisible Algorithm] Creator-caption boundary diagnostic');
-  console.log('Creator element for fourleaf.428:', creator);
-  console.log('Creator parent chain:', creator ? parentChain(creator, reel) : '(creator not found)');
-  console.log('Caption element for Summer in Japan. 🇯🇵:', captionElement);
-
-  const boundary = creator ? nearestCreatorCaptionAncestor(creator, captionText, reel) : null;
-  const containsOtherCreator = Boolean(boundary?.textContent?.includes(otherCreatorText));
-  const containsOtherCaption = Boolean(boundary?.textContent?.includes(otherCaptionText));
-
-  console.log('Nearest creator ancestor containing Summer in Japan. 🇯🇵:', boundary, elementDescription(boundary));
-  console.log('Contains nomads.onchain:', containsOtherCreator);
-  console.log('Contains This game had one rule... and somehow I qualified. 🤣:', containsOtherCaption);
-
-  if (!boundary) {
-    console.warn('[Invisible Algorithm] Structural limitation: no ancestor of fourleaf.428 contains the target caption.');
-  } else if (containsOtherCreator || containsOtherCaption) {
-    console.warn('[Invisible Algorithm] Structural limitation: the nearest shared ancestor still contains competing Reel content.');
-  } else {
-    console.log('[Invisible Algorithm] Reliable creator-caption boundary found for this DOM instance.');
-    inspectCreatorCaptionBoundary(boundary, captionText);
-  }
-  console.groupEnd();
-}
-
-function mediaDiagnosticDescription(element: HTMLElement): Record<string, string> {
-  return {
-    tagName: element.tagName,
-    role: element.getAttribute('role') || '(none)',
-    ariaLabel: element.getAttribute('aria-label') || '(none)',
-    href: element.getAttribute('href') || '(none)',
-    className: element.getAttribute('class') || '(none)',
-    textPreview: cleanText(element).slice(0, 160)
-  };
-}
-
-function diagnosticAncestorChain(element: HTMLElement, limit = 8): Record<string, string>[] {
-  const chain: Record<string, string>[] = [];
-  for (let current: HTMLElement | null = element; current && chain.length < limit; current = current.parentElement) {
-    chain.push(mediaDiagnosticDescription(current));
-    if (current === document.body) break;
-  }
-  return chain;
-}
-
-function logSelectedMediaDiagnostic(reel: HTMLElement): void {
-  const media = [
-    ...Array.from(reel.getElementsByTagName('video')),
-    ...Array.from(reel.getElementsByTagName('audio'))
-  ];
+  // Instagram has no "less" control; a click inside the reel collapses the caption.
+  // The listener sits on a descendant, so the click has to start where a real
+  // pointer would land — the topmost element at the reel's centre.
   const rect = reel.getBoundingClientRect();
-  const usernameCandidates = getUsernameCandidates(reel);
-  const captionCandidates = getCaptionCandidates(reel);
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const target = document.elementFromPoint(x, y);
+  if (!target || !reel.contains(target)) return;
 
-  console.groupCollapsed('[Invisible Algorithm] Selected Reel media/container diagnostic');
-  console.log('Selected container bounds:', {
-    top: rect.top,
-    right: rect.right,
-    bottom: rect.bottom,
-    left: rect.left,
-    width: rect.width,
-    height: rect.height
-  });
-  console.log('Selected container ancestry:', diagnosticAncestorChain(reel));
-  console.log('Selected media:', media.map((element) => ({
-    tagName: element.tagName,
-    currentSrc: element.currentSrc || element.src || '(none)',
-    ancestry: diagnosticAncestorChain(element)
-  })));
-  console.log('Selected-container region signals:', {
-    creatorProfileCandidates: usernameCandidates.length,
-    existingCaptionCandidates: captionCandidates.length,
-    indication: usernameCandidates.length
-      ? 'creator/profile signal present in the selected container'
-      : 'no creator/profile signal in the selected container; it may be a media or engagement wrapper'
-  });
-  console.groupEnd();
+  const video = reel.querySelector<HTMLVideoElement>('video');
+  const wasPlaying = video ? !video.paused : false;
+  simulateClick(target, x, y);
+
+  // Restore playback if the click also reached a play/pause handler.
+  window.setTimeout(() => {
+    if (!video) return;
+    if (wasPlaying && video.paused) void video.play().catch(() => undefined);
+    else if (!wasPlaying && !video.paused) video.pause();
+  }, 100);
 }
+
+function resolveCaption(
+  reel: HTMLElement,
+  creatorCandidate: UsernameCandidate | undefined
+): { caption: string | null; expander: HTMLElement | null } {
+  const proven = findProvenCaption(reel, creatorCandidate, getCaptionCandidates(reel));
+  if (!proven) return { caption: null, expander: null };
+
+  const assembled = assembleCaption(proven.container) || proven.preview;
+  return {
+    caption: fullCaptionText(proven.boundary, assembled) || assembled,
+    // Falls back to the whole reel in case the control sits outside the boundary.
+    expander: captionExpander(proven.boundary) || captionExpander(reel)
+  };
+}
+
+/** \p{M} keeps combining marks attached (Devanagari matras, Arabic diacritics). */
+const HASHTAG_PATTERN = /(^|\s)#([\p{L}\p{M}\p{N}_]+)/gu;
 
 function extractHashtags(caption: string | null): string[] {
   if (!caption) return [];
 
   const hashtags = new Set<string>();
-  for (const match of caption.matchAll(/(^|\s)#([\p{L}\p{N}_]+)/gu)) {
+  for (const match of caption.matchAll(HASHTAG_PATTERN)) {
     hashtags.add(`#${match[2]}`);
   }
   return [...hashtags];
 }
 
+/** The pattern consumes the whitespace before each hashtag, so removal leaves no gap. */
+function stripHashtags(caption: string | null): string | null {
+  if (!caption) return null;
+
+  const stripped = caption.replace(HASHTAG_PATTERN, '').replace(/\s+/g, ' ').trim();
+  return stripped || null;
+}
+
 function scanCurrentReel(): void {
-  console.log('[Invisible Algorithm] SCAN CURRENT REEL ENTERED');
+  // Clearing the identity makes re-entering Reels rescan rather than dedupe away.
+  if (!isReelPage()) {
+    lastReelIdentity = '';
+    expandedIdentity = '';
+    return;
+  }
+
   const reel = getCurrentReel();
-  console.log('[Invisible Algorithm] GET CURRENT REEL RETURNED:', reel);
   if (!reel) {
-    console.log('[Invisible Algorithm] GET CURRENT REEL RETURNED NULL');
+    if (pendingRetries > 0) {
+      pendingRetries--;
+      scheduleScan();
+    }
     return;
   }
 
   const reelUrl = getReelUrl(reel);
   const mediaUrl = reel.querySelector<HTMLVideoElement>('video')?.currentSrc || '';
   const identity = `${reelUrl}|${mediaUrl}`;
-  console.log('[Invisible Algorithm] IDENTITY CHECK:', { identity, lastReelIdentity });
   if (identity === lastReelIdentity) return;
+
+  const creatorCandidate = getUsernameCandidates(reel)[0];
+  const { caption, expander } = resolveCaption(reel, creatorCandidate);
+
+  // Instagram renders only the first line until "more" is pressed, so press it
+  // once per reel and rescan; the retries cover the re-render lag.
+  if (expander) {
+    if (expandedIdentity !== identity) {
+      expandedIdentity = identity;
+      expandRetries = EXPAND_RETRIES;
+      expander.click();
+      scheduleScan();
+      return;
+    }
+    if (expandRetries > 0) {
+      expandRetries--;
+      scheduleScan();
+      return;
+    }
+  }
+
+  const didExpand = expandedIdentity === identity;
   lastReelIdentity = identity;
+  expandedIdentity = '';
 
-  console.log('[Invisible Algorithm] BEFORE MEDIA/CONTAINER DIAGNOSTIC');
-  logSelectedMediaDiagnostic(reel);
-
-  const usernameCandidates = getUsernameCandidates(reel);
-  const captionCandidates = getCaptionCandidates(reel);
-  const username = getUsername(reel, usernameCandidates);
-  const caption = getCaption(reel, username, captionCandidates);
   const data: ReelData = {
     reelUrl,
-    username,
-    caption,
+    username: creatorCandidate?.username || null,
+    caption: stripHashtags(caption),
     hashtags: extractHashtags(caption)
   };
-
-  console.log('[Invisible Algorithm] Selected Reel URL:', reelUrl);
-  console.log('[Invisible Algorithm] Selected Reel container:', reel);
-  console.log('[Invisible Algorithm] Username candidates:', usernameCandidates);
-  console.log('[Invisible Algorithm] Caption candidates:', captionCandidates);
-  console.log('[Invisible Algorithm] Final username:', data.username);
-  console.log('[Invisible Algorithm] Final caption:', data.caption);
-  debugCreatorCaptionBoundary(reel);
 
   console.log(
     '==================================\n' +
@@ -480,38 +434,32 @@ function scanCurrentReel(): void {
       `Hashtags:\n${data.hashtags.length ? data.hashtags.join(', ') : '(none)'}\n` +
       '=================================='
   );
+
+  if (didExpand) collapseCaption(reel);
 }
 
 function scheduleScan(): void {
-  console.log('[Invisible Algorithm] SCHEDULE SCAN CALLED');
   if (scanTimer !== undefined) window.clearTimeout(scanTimer);
-  scanTimer = window.setTimeout(() => {
-    console.log(initialScanPending
-      ? '[Invisible Algorithm] INITIAL SCAN CALLBACK FIRED'
-      : '[Invisible Algorithm] SCHEDULED SCAN CALLBACK FIRED');
-    initialScanPending = false;
-    console.log('[Invisible Algorithm] IMMEDIATELY BEFORE scanCurrentReel()');
-    scanCurrentReel();
-  }, 150);
+  scanTimer = window.setTimeout(scanCurrentReel, 150);
+}
+
+/** Reel markup can lag an SPA route change, so retry briefly before giving up. */
+function restartScan(): void {
+  pendingRetries = 20;
+  scheduleScan();
 }
 
 function watchForReelChanges(): void {
   window.setInterval(() => {
     if (location.href === lastPageUrl) return;
     lastPageUrl = location.href;
-    console.log(`[Invisible Algorithm] Reel changed:\n${lastPageUrl}`);
-    scheduleScan();
+    restartScan();
   }, 300);
 
-  window.addEventListener('scroll', scheduleScan, { passive: true });
-  window.addEventListener('popstate', scheduleScan);
-  window.addEventListener('hashchange', scheduleScan);
+  window.addEventListener('scroll', scheduleScan, { passive: true, capture: true });
+  window.addEventListener('popstate', restartScan);
+  window.addEventListener('hashchange', restartScan);
 }
 
-console.log('[Invisible Algorithm] CHECKPOINT A: reached bottom of script');
 watchForReelChanges();
-console.log('[Invisible Algorithm] CHECKPOINT B: watchForReelChanges returned');
-console.log('[Invisible Algorithm] INITIAL SCAN SCHEDULED');
-console.log('[Invisible Algorithm] CHECKPOINT C: about to call initial scheduleScan');
-scheduleScan();
-console.log('[Invisible Algorithm] CHECKPOINT D: initial scheduleScan returned');
+restartScan();
