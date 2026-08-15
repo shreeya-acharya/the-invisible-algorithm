@@ -828,7 +828,93 @@ export default function DashboardPage({
                 )}
               </div>
 
-            </section>
+              </section>
+
+            {/* RECOMMENDATION BUBBLE INSIGHT */}
+            {data?.categoryBreakdown && data.categoryBreakdown.length > 0 && (() => {
+              const total = data.categoryBreakdown.reduce(
+                (sum, item) => sum + item.count,
+                0
+              );
+
+              const topCategory = data.categoryBreakdown[0];
+              const topPercentage =
+                total > 0
+                  ? Math.round((topCategory.count / total) * 100)
+                  : 0;
+
+              let concentrationLabel = 'Diverse';
+              let insight = '';
+
+              if (topPercentage >= 80) {
+                concentrationLabel = 'Highly concentrated';
+                insight = `A large majority of your recommendations are currently ${topCategory.category}. Your feed may be narrowing around this topic.`;
+              } else if (topPercentage >= 60) {
+                concentrationLabel = 'Concentrated';
+                insight = `${topPercentage}% of your analyzed Reels fall into ${topCategory.category}. Your recommendations are showing a noticeable concentration around this category.`;
+              } else if (topPercentage >= 40) {
+                concentrationLabel = 'Moderately concentrated';
+                insight = `${topCategory.category} is currently your largest recommendation category at ${topPercentage}%. Some concentration is visible, but your feed still contains several different topics.`;
+              } else {
+                insight = `No single category dominates your recommendations. Your analyzed Reels are spread across multiple topics.`;
+              }
+
+              return (
+                <section className="dashboard-entry glass-dashboard dashboard-card rounded-[26px] p-6 md:p-8">
+
+                  <div className="flex flex-col md:flex-row justify-between md:items-start gap-5">
+
+                    <div className="flex-1">
+                      <p className="text-[10px] font-mono uppercase tracking-[.2em] text-[#b7c4ff]/60">
+                        Your recommendation bubble
+                      </p>
+
+                      <h2 className="text-2xl font-bold mt-2">
+                        {concentrationLabel}
+                      </h2>
+
+                      <p className="text-sm text-white/55 mt-3 leading-relaxed max-w-2xl">
+                        {insight}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0 px-4 py-3 rounded-2xl bg-[#b7c4ff]/[0.05] border border-[#b7c4ff]/[0.10]">
+                      <p className="text-[9px] font-mono uppercase tracking-widest text-white/30">
+                        Largest category
+                      </p>
+
+                      <p className="text-lg font-bold text-[#b7c4ff] mt-1">
+                        {topCategory.category}
+                      </p>
+
+                      <p className="text-[10px] font-mono text-white/35 mt-1">
+                        {topPercentage}% of analyzed Reels
+                      </p>
+                    </div>
+
+                  </div>
+
+                  <div className="mt-6 pt-5 border-t border-white/[0.05]">
+                    <p className="text-xs text-white/35">
+                      💡 Explore content outside your usual recommendations to add more perspectives.
+                    </p>
+                    <div className="mt-4 p-4 rounded-2xl bg-white/[0.025] border border-white/[0.05]">
+                      <p className="text-[10px] font-mono uppercase tracking-[.15em] text-[#b7c4ff]/60">
+                        Why this matters
+                      </p>
+
+                      <p className="text-xs text-white/40 mt-2 leading-relaxed">
+                        Recommendation systems learn from the content you interact with.
+                        When similar content repeatedly appears, your feed can become less
+                        varied over time. This does not prove that an algorithm is creating
+                        a filter bubble, but it gives you a signal worth investigating.
+                      </p>
+                    </div>
+                  </div>
+
+                </section>
+              );
+            })()}
 
             {/* ACTIVITY + EXPLORE */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-5">
