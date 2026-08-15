@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import cors from 'cors';
@@ -219,6 +220,36 @@ async function startServer() {
   });
 
   // 5. BROWSER CHROME EXTENSION SUPPORT ENDPOINTS
+
+// POST /extension/reel
+app.post('/api/extension/reel', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { reel_url, username, caption, hashtags } = req.body;
+
+    if (!reel_url) {
+      return res.status(400).json({ error: 'Reel URL is required.' });
+    }
+
+    const success = await DbService.recordReel(
+      req.user!.id,
+      reel_url,
+      username || null,
+      caption || null,
+      Array.isArray(hashtags) ? hashtags : []
+    );
+
+    if (!success) {
+      return res.status(500).json({ error: 'Failed to store Reel data.' });
+    }
+
+    res.status(201).json({
+      message: 'Reel data stored successfully.'
+    });
+  } catch (err: any) {
+    console.error('Extension Reel error:', err);
+    res.status(500).json({ error: 'Failed to process Reel data.' });
+  }
+});
 
   // POST /extension/session
   app.post('/api/extension/session', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {

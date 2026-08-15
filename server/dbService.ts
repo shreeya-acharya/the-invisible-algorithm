@@ -444,6 +444,25 @@ export class DbService {
     const sessions = await this.getSessions(userId);
     const achievements = await this.getAchievements(userId);
     const settings = await this.getSettings(userId);
+    const { data: reels, error: reelsError } = await supabase
+  .from('Reels')
+  .select('category')
+  .eq('user_id', userId);
+
+if (reelsError) {
+  console.error('Error fetching Reel categories:', reelsError);
+}
+
+const categoryCounts: Record<string, number> = {};
+
+(reels || []).forEach((reel: { category: string | null }) => {
+  const category = reel.category || 'Other';
+  categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+});
+
+const categoryBreakdown = Object.entries(categoryCounts)
+  .map(([category, count]) => ({ category, count }))
+  .sort((a, b) => b.count - a.count);
 
     // Calculate metrics
     let totalDuration = 0; // seconds
@@ -510,6 +529,7 @@ export class DbService {
 
     return {
       echoChamberScore: averageScore,
+      categoryBreakdown,
       diversityLabel: averageScore > 70 ? 'High' : averageScore > 40 ? 'Moderate' : 'Low',
       diversityChange: '+15% improvement',
       browsingTimeText,
@@ -625,4 +645,82 @@ export class DbService {
       return true;
     }
   }
+  
+static categorizeReel(
+  caption: string | null,
+  hashtags: string[]
+): string {
+  const text = `${caption || ''} ${hashtags.join(' ')}`.toLowerCase();
+
+  if (/study|learn|education|exam|college|school|tutorial|coding|programming|science|math/.test(text)) {
+    return 'Education';
+  }
+
+  if (/gym|fitness|workout|health|running|yoga|weight|exercise|nursing|doctor|medical/.test(text)) {
+    return 'Health & Fitness';
+  }
+
+  if (/recipe|food|cooking|cook|travel|fashion|beauty|makeup|lifestyle|outfit/.test(text)) {
+    return 'Food & Lifestyle';
+  }
+
+  if (/song|music|sing|singer|guitar|piano|cover|dance/.test(text)) {
+    return 'Music';
+  }
+
+  if (/makeup|skincare|beauty|fashion|dress|outfit|hair|nail/.test(text)) {
+    return 'Fashion & Beauty';
+  }
+
+  if (/job|career|business|money|finance|invest|salary|entrepreneur/.test(text)) {
+    return 'Career & Finance';
+  }
+
+  if (/funny|meme|comedy|lol|haha|prank|viral|entertainment/.test(text)) {
+    return 'Entertainment';
+  }
+
+  return 'Other';
+}
+/**
+ * Stores an individual Reel captured by the browser extension.
+ */
+static async recordReel(
+  userId: string,
+  reelUrl: string,
+  username: string | null,
+  caption: string | null,
+  hashtags: string[]
+): Promise<boolean> {
+  if (supabase) {
+    const { error } = await supabase
+      .from('Reels')
+      .insert([{
+  user_id: userId,
+  reel_url: reelUrl,
+  username,
+  caption,
+  hashtags,
+  category: DbService.categorizeReel(caption, hashtags)
+}]);
+
+    if (error) {
+      console.error('Error saving reel:', error);
+      return false;
+    }
+
+    return true;
+  }
+
+  console.log('Reel recorded in local fallback:', {
+    userId,
+    reelUrl,
+    username,
+    caption,
+    hashtags
+  });
+
+  return true;
+}
+
 }

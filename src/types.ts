@@ -41,6 +41,10 @@ export interface Settings {
 
 export interface DashboardData {
   echoChamberScore: number;
+  categoryBreakdown: Array<{
+  category: string;
+  count: number;
+}>;
   diversityLabel: string;
   diversityChange: string;
   browsingTimeText: string;

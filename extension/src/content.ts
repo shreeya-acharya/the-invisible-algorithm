@@ -372,6 +372,65 @@ function stripHashtags(caption: string | null): string | null {
   return stripped || null;
 }
 
+const API_BASE_URL = 'http://localhost:3000';
+
+async function sendReelData(data: ReelData): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/extension/reel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      console.error(
+        '[Invisible Algorithm] Failed to store reel:',
+        response.status,
+        await response.text()
+      );
+      return;
+    }
+
+    console.log('[Invisible Algorithm] Reel data stored successfully.');
+  } catch (error) {
+    console.error('[Invisible Algorithm] Could not connect to server:', error);
+  }
+}
+
+async function sendReelDataToBackend(data: ReelData): Promise<void> {
+  const EXTENSION_TOKEN = 'eyJhbGciOiJFUzI1NiIsImtpZCI6ImQzNzBlMjI0LTU0NzQtNGQ1MS05M2QxLWM2ZTEyOGQ4MjdlOSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2x0dnJjdXZoZ2t5cWl2cnhmbGdiLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiJlOTQ2ZDdkMi04NWY3LTRhZDMtYmZlYi04NDM4Njk0ODIyODIiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzg2NzEwNTI4LCJpYXQiOjE3ODY3MDY5MjgsImVtYWlsIjoiZGVtb0BleGFtcGxlLmNvbSIsInBob25lIjoiIiwiYXBwX21ldGFkYXRhIjp7InByb3ZpZGVyIjoiZW1haWwiLCJwcm92aWRlcnMiOlsiZW1haWwiXX0sInVzZXJfbWV0YWRhdGEiOnsiZW1haWxfdmVyaWZpZWQiOnRydWV9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzg2NzA2OTI4fV0sInNlc3Npb25faWQiOiI2ZjI5YjZhYi03M2QwLTQ1OTEtYTcxZC04M2NiODE1ZDRjZjMiLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.xSg-vUKbjpKFNBWsG94AaoHUYv5LLdSt_cSd9NzBaULwjvOLFkL0JtU-EeY9UiFjNWbXzE1Z0OaxSyt6BrALmQ';
+
+  try {
+    const response = await fetch('http://localhost:3000/api/extension/reel', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${EXTENSION_TOKEN}`
+      },
+      body: JSON.stringify({
+        reel_url: data.reelUrl,
+        username: data.username,
+        caption: data.caption,
+        hashtags: data.hashtags
+      })
+    });
+
+    if (!response.ok) {
+      console.error(
+        '[Invisible Algorithm] Failed to send Reel data:',
+        await response.text()
+      );
+      return;
+    }
+
+    console.log('[Invisible Algorithm] Reel data saved successfully.');
+  } catch (error) {
+    console.error('[Invisible Algorithm] Backend connection failed:', error);
+  }
+}
+
 function scanCurrentReel(): void {
   // Clearing the identity makes re-entering Reels rescan rather than dedupe away.
   if (!isReelPage()) {
@@ -424,6 +483,8 @@ function scanCurrentReel(): void {
     caption: stripHashtags(caption),
     hashtags: extractHashtags(caption)
   };
+
+  void sendReelDataToBackend(data);
 
   console.log(
     '==================================\n' +

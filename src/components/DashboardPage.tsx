@@ -380,6 +380,57 @@ export default function DashboardPage({ onNavigate, onLogout, userName }: Dashbo
                 </form>
               </div>
             </div>
+                        {/* Content Category Breakdown */}
+            <div className="glass p-stack-lg rounded-2xl border border-white/5 space-y-5">
+              <div>
+                <h3 className="font-bold text-white font-headline-md">
+                  Content Categories
+                </h3>
+                <p className="text-xs text-on-surface-variant">
+                  What your recommendations are mostly about.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {data?.categoryBreakdown && data.categoryBreakdown.length > 0 ? (
+                  data.categoryBreakdown.map((item) => {
+                    const total = data.categoryBreakdown.reduce(
+                      (sum, category) => sum + category.count,
+                      0
+                    );
+
+                    const percentage =
+                      total > 0 ? Math.round((item.count / total) * 100) : 0;
+
+                    return (
+                      <div key={item.category} className="space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-white">
+                            {item.category}
+                          </span>
+                          <span className="text-xs text-on-surface-variant font-mono">
+                            {item.count} {item.count === 1 ? 'Reel' : 'Reels'} · {percentage}%
+                          </span>
+                        </div>
+
+                        <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-primary rounded-full transition-all duration-500"
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-on-surface-variant">
+                    No categorised Reels yet. Browse a few Reels with the extension
+                    enabled to start building your profile.
+                  </p>
+                )}
+              </div>
+            </div>
+
 
             {/* Achievements & Badges & Settings */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-stack-lg">
