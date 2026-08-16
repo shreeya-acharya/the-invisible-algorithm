@@ -41,6 +41,7 @@ export interface Settings {
 
 export interface DashboardData {
   echoChamberScore: number;
+  totalSessions: number;
   categoryBreakdown: Array<{
   category: string;
   count: number;

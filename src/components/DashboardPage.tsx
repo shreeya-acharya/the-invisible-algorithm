@@ -568,7 +568,7 @@ export default function DashboardPage({
 
                     <div className="px-3 py-2 rounded-lg bg-emerald-400/[0.07] border border-emerald-400/10">
                       <span className="text-[10px] text-emerald-400 font-bold">
-                        ↑ 12%
+                        {data?.diversityChange || "No change yet"}
                       </span>
 
                       <span className="text-[10px] text-white/35 ml-2">
@@ -608,7 +608,7 @@ export default function DashboardPage({
               <StatCard
                 icon="◎"
                 label="Feeds analyzed"
-                value={`${data?.recentSessions?.length || 0}`}
+                value={`${data?.totalSessions || 0}`}
                 description="Recent recommendation sessions"
               />
 
@@ -753,7 +753,7 @@ export default function DashboardPage({
                 </p>
 
                 <span className="text-xs font-bold text-emerald-400">
-                  +12% this week
+                  {data?.diversityChange || "No change yet"}
                 </span>
 
               </div>
@@ -1063,62 +1063,88 @@ export default function DashboardPage({
             </section>
 
             {/* ACHIEVEMENTS */}
-            <section className="glass-dashboard rounded-[26px] p-6 md:p-8">
+    <section className="glass-dashboard rounded-[26px] p-6 md:p-8">
 
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
 
-                <div>
-                  <p className="text-[10px] font-mono uppercase tracking-[.2em] text-[#b7c4ff]/60">
-                    Progress
-                  </p>
+        <div>
+          <p className="text-[10px] font-mono uppercase tracking-[.2em] text-[#b7c4ff]/60">
+            Progress
+          </p>
 
-                  <h2 className="text-xl font-bold mt-2">
-                    Your achievements
-                  </h2>
+          <h2 className="text-xl font-bold mt-2">
+            Your achievements
+          </h2>
 
-                  <p className="text-xs text-white/35 mt-1">
-                    Keep exploring to unlock new milestones.
-                  </p>
-                </div>
+          <p className="text-xs text-white/35 mt-1">
+            Milestones you've unlocked while exploring your recommendation feed.
+          </p>
+        </div>
 
-                <span className="text-[9px] font-mono uppercase tracking-widest text-white/20">
-                  3 / 4 unlocked
-                </span>
+        <span className="text-[9px] font-mono uppercase tracking-widest text-white/20">
+          {data?.achievements?.length || 0} unlocked
+        </span>
 
+      </div>
+
+      {data?.achievements && data.achievements.length > 0 ? (
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+
+          {data.achievements.map((achievement) => (
+
+            <div
+              key={achievement.id}
+              className="rounded-2xl border border-[#b7c4ff]/10 bg-[#b7c4ff]/[0.04] p-4"
+            >
+
+              <div className="w-10 h-10 rounded-xl bg-[#b7c4ff]/[0.08] border border-[#b7c4ff]/10 flex items-center justify-center text-[#b7c4ff] text-lg">
+                ✦
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-6">
+              <h3 className="text-sm font-bold mt-4">
+                {achievement.badge_name}
+              </h3>
 
-                <Achievement
-                  icon="✦"
-                  title="Explorer"
-                  description="First audit"
-                  unlocked
-                />
+              <p className="text-[10px] text-white/30 mt-2">
+                Unlocked{' '}
+                {new Date(achievement.unlocked_at).toLocaleDateString(
+                  'en-US',
+                  {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  }
+                )}
+              </p>
 
-                <Achievement
-                  icon="◎"
-                  title="Seeker"
-                  description="80%+ diversity"
-                  unlocked
-                />
+            </div>
 
-                <Achievement
-                  icon="⌕"
-                  title="Detective"
-                  description="5 feeds audited"
-                  unlocked
-                />
+          ))}
 
-                <Achievement
-                  icon="◇"
-                  title="Bubble Buster"
-                  description="30 day streak"
-                  unlocked={false}
-                />
+        </div>
 
-              </div>
-            </section>
+      ) : (
+
+        <div className="mt-6 py-10 text-center rounded-2xl border border-white/[0.05] bg-white/[0.015]">
+
+          <div className="text-2xl opacity-30">
+            ✦
+          </div>
+
+          <p className="text-xs text-white/35 mt-3">
+            No achievements unlocked yet.
+          </p>
+
+          <p className="text-[10px] text-white/20 mt-1">
+            Keep exploring different recommendations to unlock milestones.
+          </p>
+
+        </div>
+
+      )}
+
+    </section>
 
             {/* SETTINGS */}
             {settings && (

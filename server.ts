@@ -53,6 +53,7 @@ async function startServer() {
       }
 
       const token = authHeader.split(' ')[1];
+      console.log("TOKEN RECEIVED:", token.slice(0, 8) + "...");
       const user = await DbService.verifyToken(token);
       
       if (!user) {
@@ -160,7 +161,11 @@ async function startServer() {
   // GET /dashboard
   app.get('/api/dashboard', authMiddleware, async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const dashboardData = await DbService.getDashboardData(req.user!.id);
+      console.log('📊 DASHBOARD REQUEST USER:', req.user!.id);
+      const dashboardData = await DbService.getDashboardData(
+        req.user!.id,
+        req.headers.authorization!.replace('Bearer ', '')
+      );
       res.json(dashboardData);
     } catch (err: any) {
       console.error('Get dashboard error:', err);
@@ -267,7 +272,8 @@ app.post('/api/extension/reel', authMiddleware, async (req: AuthenticatedRequest
         website,
         Number(duration),
         score,
-        refl
+        refl,
+        req.token!
       );
 
       if (!success) {

@@ -54,21 +54,23 @@ class ApiService {
   }
 
   async fetchWithAuth<T>(url: string, options: RequestInit = {}): Promise<T> {
-    const res = await fetch(`${API_BASE}${url}`, {
-      ...options,
-      headers: {
-        ...this.getHeaders(),
-        ...options.headers,
-      },
-    });
+  console.log('🌐 API REQUEST:', `${API_BASE}${url}`);
 
-    if (!res.ok) {
-      const errBody = await res.json().catch(() => ({}));
-      throw new Error(errBody.error || `HTTP error ${res.status}`);
-    }
+  const res = await fetch(`${API_BASE}${url}`, {
+    ...options,
+    headers: {
+      ...this.getHeaders(),
+      ...options.headers,
+    },
+  });
 
-    return res.json() as Promise<T>;
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || `HTTP error ${res.status}`);
   }
+
+  return res.json() as Promise<T>;
+}
 
   async signup(email: string, fullName: string, passwordHash: string): Promise<User> {
     const data = await this.fetchWithAuth<{ user: User; token: string }>('/signup', {

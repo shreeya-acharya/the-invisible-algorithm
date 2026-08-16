@@ -2,7 +2,7 @@
   "name": "invisible-algorithm-extension",
   "private": true,
   "scripts": {
-    "build": "esbuild src/content.ts --bundle --format=iife --target=chrome120 --outfile=dist/content.js",
+    "build": "esbuild src/content.ts src/auth-bridge.ts --bundle --format=iife --target=chrome120 --outdir=dist",
     "watch": "npm run build -- --watch"
   }
 }

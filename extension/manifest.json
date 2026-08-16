@@ -3,10 +3,27 @@
   "name": "Invisible Algorithm — Reel Observer",
   "version": "0.1.0",
   "description": "Sprint 1 proof of concept: observes visible Instagram Reels captions.",
+  "permissions": [
+    "storage"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://www.instagram.com/*", "https://instagram.com/*"],
-      "js": ["dist/content.js"],
+      "matches": [
+        "http://localhost:3000/*"
+      ],
+      "js": [
+        "dist/auth-bridge.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.instagram.com/*",
+        "https://instagram.com/*"
+      ],
+      "js": [
+        "dist/content.js"
+      ],
       "run_at": "document_idle"
     }
   ]

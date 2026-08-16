@@ -2,7 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { User, BrowsingSession, FeedScore, Achievement, Settings, DashboardData } from '../src/types';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
 let supabase: SupabaseClient | null = null;
 
@@ -381,19 +381,32 @@ export class DbService {
   /**
    * Returns list of user's browsing sessions, with nested feed scores if available
    */
-  static async getSessions(userId: string): Promise<BrowsingSession[]> {
+  static async getSessions(userId: string, token: string): Promise<BrowsingSession[]> {
     if (supabase) {
-      const { data: sessions, error: sErr } = await supabase
+      const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      });
+      console.log('DB INSERT USER ID:', userId);
+      const { data: sessions, error: sErr } = await userSupabase
         .from('BrowsingSessions')
         .select('*')
         .eq('user_id', userId)
         .order('start_time', { ascending: false });
+      console.log('🔎 SESSIONS FETCH FINISHED', { count: sessions?.length || 0, sErr });
+      if (sErr) {
+       console.error('❌ ERROR FETCHING BROWSING SESSIONS:', sErr);
+      return [];
+      }
 
-      if (sErr || !sessions) return [];
+      console.log('✅ BROWSING SESSIONS FOUND:', sessions?.length || 0);
 
       // Fetch feed scores for these sessions
       const sessionIds = sessions.map(s => s.id);
-      const { data: scores } = await supabase
+      const { data: scores } = await userSupabase
         .from('FeedScores')
         .select('*')
         .in('session_id', sessionIds);
@@ -422,13 +435,21 @@ export class DbService {
   /**
    * Returns achievements unlocked by a user
    */
-  static async getAchievements(userId: string): Promise<Achievement[]> {
+  static async getAchievements(userId: string, token: string): Promise<Achievement[]> {
     if (supabase) {
-      const { data, error } = await supabase
+      const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    });
+          const { data, error } = await userSupabase
         .from('Achievements')
         .select('*')
         .eq('user_id', userId)
         .order('unlocked_at', { ascending: false });
+        console.log('🏆 ACHIEVEMENTS FETCHED:', { count: data?.length || 0, error, data });
       return (data || []) as Achievement[];
     } else {
       return memoryStore.achievements
@@ -440,104 +461,198 @@ export class DbService {
   /**
    * Compiles complete dashboard analytics for a user
    */
-  static async getDashboardData(userId: string): Promise<DashboardData> {
-    const sessions = await this.getSessions(userId);
-    const achievements = await this.getAchievements(userId);
-    const settings = await this.getSettings(userId);
-    const { data: reels, error: reelsError } = await supabase
-  .from('Reels')
-  .select('category')
-  .eq('user_id', userId);
+    static async getDashboardData(userId: string, token: string): Promise<DashboardData> {
+    const sessions = await this.getSessions(userId, token);
+      const achievements = await this.getAchievements(userId, token);
+      const settings = await this.getSettings(userId);
+      const { data: reels, error: reelsError } = await supabase
+    .from('Reels')
+    .select('category')
+    .eq('user_id', userId);
 
-if (reelsError) {
-  console.error('Error fetching Reel categories:', reelsError);
-}
+    if (reelsError) {
+      console.error('Error fetching Reel categories:', reelsError);
+    }
 
-const categoryCounts: Record<string, number> = {};
+    const categoryCounts: Record<string, number> = {};
 
-(reels || []).forEach((reel: { category: string | null }) => {
-  const category = reel.category || 'Other';
-  categoryCounts[category] = (categoryCounts[category] || 0) + 1;
-});
-
-const categoryBreakdown = Object.entries(categoryCounts)
-  .map(([category, count]) => ({ category, count }))
-  .sort((a, b) => b.count - a.count);
-
-    // Calculate metrics
-    let totalDuration = 0; // seconds
-    let totalScores = 0;
-    let scoresWithDiversity = 0;
-
-    sessions.forEach(s => {
-      totalDuration += s.browsing_duration;
-      if (s.feed_score) {
-        totalScores += s.feed_score.diversity_score;
-        scoresWithDiversity++;
-      }
+    (reels || []).forEach((reel: { category: string | null }) => {
+    const category = reel.category || 'Other';
+    categoryCounts[category] = (categoryCounts[category] || 0) + 1;
     });
 
-    const averageScore = scoresWithDiversity > 0 ? Math.round(totalScores / scoresWithDiversity) : 74; // Fallback to 74%
-    const browsingHours = Math.floor(totalDuration / 3600);
-    const browsingMinutes = Math.floor((totalDuration % 3600) / 60);
+  const categoryBreakdown = Object.entries(categoryCounts)
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count);
 
-    let browsingTimeText = '';
-    if (browsingHours > 0) {
-      browsingTimeText = `${browsingHours}h ${browsingMinutes}m`;
-    } else {
-      browsingTimeText = `${browsingMinutes}m`;
-    }
-    if (browsingTimeText === '0m') {
-      browsingTimeText = '1h 24m'; // Fallback mockup default
-    }
+      // Calculate metrics
+  let totalDuration = 0;
+
+  sessions.forEach(s => {
+    totalDuration += s.browsing_duration;
+  });
+
+  // Current diversity = average of the 7 most recent scored sessions
+  const recentScoredSessions = sessions
+    .filter(s => s.feed_score)
+    .slice(0, 7);
+
+  const averageScore =
+    recentScoredSessions.length > 0
+      ? Math.round(
+          recentScoredSessions.reduce(
+            (sum, s) => sum + s.feed_score!.diversity_score,
+            0
+          ) / recentScoredSessions.length
+        )
+      : 0;
+
+      const browsingHours = Math.floor(totalDuration / 3600);
+      const browsingMinutes = Math.floor((totalDuration % 3600) / 60);
+
+      let browsingTimeText = '';
+      if (browsingHours > 0) {
+        browsingTimeText = `${browsingHours}h ${browsingMinutes}m`;
+      } else {
+        browsingTimeText = `${browsingMinutes}m`;
+      }
+      if (browsingTimeText === '0m') {
+        browsingTimeText = '0m';
+      }
 
     // Latest reflection summary
     const reflections = sessions
       .filter(s => s.feed_score?.reflection)
       .map(s => s.feed_score!.reflection);
     
-    let reflectionSummary = `"Today's browsing focused mostly on technology and entertainment. Only 22% of viewed recommendations introduced new perspectives."`;
+    let reflectionSummary = '';
     if (reflections.length > 0) {
       reflectionSummary = `"${reflections[0]}"`;
     }
 
-    // Dynamic recent sessions
-    const recentSessions = sessions.slice(0, 3).map(s => {
-      const date = new Date(s.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const durationMins = Math.round(s.browsing_duration / 60);
-      const duration = durationMins >= 60 
-        ? `${Math.floor(durationMins / 60)}h ${durationMins % 60}m` 
-        : `${durationMins}m`;
+    // Dynamic recent sessions — one point per day
+const dailySessions = new Map<string, {
+  totalScore: number;
+  count: number;
+  duration: number;
+}>();
 
-      return {
-        date,
-        duration,
-        score: s.feed_score ? s.feed_score.diversity_score : 60,
-        summary: s.feed_score ? s.feed_score.reflection : 'Web browsing session.'
-      };
-    });
+sessions.forEach(s => {
+  const dateKey = new Date(s.start_time).toISOString().slice(0, 10);
+
+  const existing = dailySessions.get(dateKey) || {
+    totalScore: 0,
+    count: 0,
+    duration: 0
+  };
+
+  existing.totalScore += s.feed_score?.diversity_score ?? 60;
+  existing.count += 1;
+  existing.duration += s.browsing_duration;
+
+  dailySessions.set(dateKey, existing);
+});
+
+const recentSessions = [...dailySessions.entries()]
+  .sort(([a], [b]) => a.localeCompare(b))
+  .slice(-7)
+  .map(([dateKey, day]) => {
+    const date = new Date(`${dateKey}T00:00:00Z`).toLocaleDateString(
+      'en-US',
+      {
+        month: 'short',
+        day: 'numeric'
+      }
+    );
+
+    const durationMins = Math.round(day.duration / 60);
+
+    const duration = durationMins >= 60
+      ? `${Math.floor(durationMins / 60)}h ${durationMins % 60}m`
+      : `${durationMins}m`;
+
+    return {
+      date,
+      duration,
+      score: Math.round(day.totalScore / day.count),
+      summary: `${day.count} browsing session${day.count === 1 ? '' : 's'}`
+    };
+  });
 
     // Handle defaults if empty
-    const finalRecentSessions = recentSessions.length > 0 ? recentSessions : [
-      { date: 'Oct 24', duration: '45m', score: 68, summary: 'Heavy focus on AI and Space.' },
-      { date: 'Oct 23', duration: '1h 12m', score: 82, summary: 'Social media bubble intensification.' },
-      { date: 'Oct 22', duration: '38m', score: 54, summary: 'Productive educational exploration.' }
-    ];
+    const finalRecentSessions = recentSessions;
+    const totalSessions = sessions.length;
 
     // Current streak (for simplicity, we return a mockup or computed streak)
-    const currentStreakDays = sessions.length > 0 ? Math.min(12, 3 + sessions.length) : 12;
+    console.log('🔢 SESSION COUNT FOR STREAK:', sessions.length);
+
+    const sessionDates = new Set(
+      sessions.map(s =>
+        new Date(s.start_time).toISOString().slice(0, 10)
+      )
+    );
+
+    const today = new Date();
+    const todayKey = today.toISOString().slice(0, 10);
+
+    let currentStreakDays = 0;
+
+    let startOffset = sessionDates.has(todayKey) ? 0 : 1;
+
+    for (let i = startOffset; i < sessions.length + 2; i++) {
+      const date = new Date(today);
+      date.setUTCDate(today.getUTCDate() - i);
+
+      const dateKey = date.toISOString().slice(0, 10);
+
+      if (sessionDates.has(dateKey)) {
+        currentStreakDays++;
+      } else {
+        break;
+      }
+    }
+
+    console.log('📅 TODAY:', todayKey);
+    console.log('📅 SESSION DATES:', [...sessionDates]);
+    console.log('🔥 CURRENT STREAK:', currentStreakDays);
 
     return {
       echoChamberScore: averageScore,
+      totalSessions,
       categoryBreakdown,
       diversityLabel: averageScore > 70 ? 'High' : averageScore > 40 ? 'Moderate' : 'Low',
-      diversityChange: '+15% improvement',
+      diversityChange: (() => {
+        if (recentSessions.length < 2) return 'No change yet';
+
+        const midpoint = Math.floor(recentSessions.length / 2);
+
+       const olderSessions = recentSessions.slice(0, midpoint);
+        const newerSessions = recentSessions.slice(midpoint);
+
+        const olderAverage =
+        olderSessions.reduce((sum, s) => sum + s.score, 0) /
+        olderSessions.length;
+
+        const newerAverage =
+        newerSessions.reduce((sum, s) => sum + s.score, 0) /
+        newerSessions.length;
+
+        if (olderAverage === 0) return 'No change yet';
+
+        const change = Math.round(
+          ((newerAverage - olderAverage) / olderAverage) * 100
+        );
+
+       return change > 0
+        ? `+${change}% this week`
+        : `${change}% this week`;
+      })(),
       browsingTimeText,
       currentStreakDays,
       reflectionSummary,
       recentSessions: finalRecentSessions,
       achievements,
-      settings
+      settings,
     };
   }
 
@@ -549,14 +664,24 @@ const categoryBreakdown = Object.entries(categoryCounts)
     website: string,
     durationSeconds: number,
     diversityScore: number,
-    reflectionSummary: string
+    reflectionSummary: string,
+    token: string
   ): Promise<boolean> {
     const startTime = new Date(Date.now() - durationSeconds * 1000).toISOString();
     const endTime = new Date().toISOString();
 
     if (supabase) {
+      const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      });
+      console.log('DEBUG USER ID:', userId);
+      console.log('DEBUG SUPABASE INSERT USER ID:', userId);
       // 1. Create BrowsingSession
-      const { data: session, error: sErr } = await supabase
+      const { data: session, error: sErr } = await userSupabase
         .from('BrowsingSessions')
         .insert([{
           user_id: userId,
@@ -574,7 +699,7 @@ const categoryBreakdown = Object.entries(categoryCounts)
       }
 
       // 2. Create FeedScore
-      const { error: fErr } = await supabase
+      const { error: fErr } = await userSupabase
         .from('FeedScores')
         .insert([{
           session_id: session.id,
@@ -587,25 +712,58 @@ const categoryBreakdown = Object.entries(categoryCounts)
         return false;
       }
 
-      // 3. Unlock a badge if not already unlocked
-      // E.g. unlock "Explorer" or others based on diversity score
-      if (diversityScore > 80) {
-        const { data: existing } = await supabase
-          .from('Achievements')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('badge_name', 'Seeker')
-          .single();
+      // 3. Check and unlock achievements
+const { count: sessionCount } = await userSupabase
+  .from('BrowsingSessions')
+  .select('*', { count: 'exact', head: true })
+  .eq('user_id', userId);
 
-        if (!existing) {
-          await supabase.from('Achievements').insert([{
-            user_id: userId,
-            badge_name: 'Seeker',
-            unlocked_at: new Date().toISOString()
-          }]);
-        }
+const achievementsToUnlock: string[] = [];
+
+if ((sessionCount || 0) >= 5) {
+  achievementsToUnlock.push('Explorer');
+}
+
+if (diversityScore >= 80) {
+  achievementsToUnlock.push('Seeker');
+}
+
+if (diversityScore >= 90) {
+  achievementsToUnlock.push('Diversity Champion');
+}
+
+if ((sessionCount || 0) >= 10) {
+  achievementsToUnlock.push('Detective');
+}
+
+for (const badgeName of achievementsToUnlock) {
+  const { data: existing } = await userSupabase
+    .from('Achievements')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('badge_name', badgeName)
+    .maybeSingle();
+
+  if (!existing) {
+     const { error: achievementError } = await userSupabase
+      .from('Achievements')
+      .insert([{
+        user_id: userId,
+        badge_name: badgeName,
+        unlocked_at: new Date().toISOString()
+      }]);
+
+    if (achievementError) {
+      if (achievementError.code === '23505') {
+        console.log(`ℹ️ Achievement already unlocked: ${badgeName}`);
+      } else {
+        console.error(`Error unlocking ${badgeName}:`, achievementError);
       }
-
+    } else {
+      console.log(`🏆 Achievement unlocked: ${badgeName}`);
+    }
+  }
+}
       return true;
     } else {
       // Memory Store logic
@@ -680,6 +838,9 @@ static categorizeReel(
     return 'Entertainment';
   }
 
+  if (/art|artist|illustration|illustrator|drawing|draw|painting|painter|sketch|sketching|canvas|digital art|digitalart|artwork|creative|creativity|portrait|watercolor|watercolour|calligraphy|sculpture|ceramic|design/.test(text)) {
+    return 'Art';
+  }
   return 'Other';
 }
 /**
